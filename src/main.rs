@@ -1,3 +1,5 @@
+use std::ops::{Add, Sub};
+
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -56,30 +58,48 @@ struct Portfolio {
 }
 
 trait Asset {
-    fn calculate_average_price(&self, stock: Stock) -> Decimal;
     fn add(&mut self, stock_trade: StockTrade) -> &Self;
+    fn calculate_average_price(&self, stock: Stock) -> Decimal;
+    fn available(&self, stock: Stock) -> Decimal;
 }
 
 impl Asset for Vec<StockTrade> {
+    fn add(&mut self, stock_trade: StockTrade) -> &Self {
+        self.push(stock_trade);
+        self
+    }
+
     fn calculate_average_price(&self, stock: Stock) -> Decimal {
         let buy_trades = self.iter().fold((dec!(0), dec!(0)), |acc, e| {
             match e.stock.ticker == stock.ticker && e.operation == Operation::BUY {
                 true => (acc.0 + e.amount * e.price, acc.1 + e.amount), // (price_sum, amount_sum)
-                false => (dec!(0), dec!(0)),
+                false => (acc.0, acc.1),
             }
         });
 
         let (total_price, total_amount) = buy_trades;
-        if total_amount == dec!(0) {
-            return dec!(0);
+        match total_amount {
+            amount if amount.is_zero() => dec!(0),
+            _ => (total_price / total_amount).round_dp(2),
         }
-
-        (total_price / total_amount).round_dp(2)
     }
 
-    fn add(&mut self, stock_trade: StockTrade) -> &Self {
-        self.push(stock_trade);
-        self
+    fn available(&self, stock: Stock) -> Decimal {
+        let buy_trades_amount = self.iter().fold(dec!(0), |acc, trade| {
+            match trade.stock.ticker == stock.ticker && trade.operation == Operation::BUY {
+                true => acc + trade.amount,
+                false => acc,
+            }
+        });
+
+        let sell_trades_amount = self.iter().fold(dec!(0), |acc, trade| {
+            match trade.stock.ticker == stock.ticker && trade.operation == Operation::SELL {
+                true => acc + trade.amount,
+                false => acc,
+            }
+        });
+
+        buy_trades_amount - sell_trades_amount
     }
 }
 
@@ -134,5 +154,40 @@ mod tests {
             portfolio.equities.calculate_average_price(setup_stock()),
             dec!(19.09)
         );
+    }
+
+    #[test]
+    fn test_available() {
+        let _1_buy_trade_1 = StockTrade {
+            amount: dec!(10),
+            price: dec!(4.99),
+            operation: Operation::BUY,
+            stock: setup_stock(),
+            date: Utc::now(),
+        };
+
+        let _2_sell_trade_1 = StockTrade {
+            amount: dec!(8),
+            price: dec!(5.20),
+            operation: Operation::SELL,
+            stock: setup_stock(),
+            date: Utc::now(),
+        };
+
+        let _3_buy_trade_2 = StockTrade {
+            amount: dec!(15),
+            price: dec!(4.90),
+            operation: Operation::BUY,
+            stock: setup_stock(),
+            date: Utc::now(),
+        };
+
+        let mut portfolio = Portfolio { equities: vec![] };
+
+        portfolio.equities.add(_1_buy_trade_1.clone());
+        portfolio.equities.add(_2_sell_trade_1.clone());
+        portfolio.equities.add(_3_buy_trade_2.clone());
+
+        assert_eq!(portfolio.equities.available(setup_stock()), dec!(17));
     }
 }
