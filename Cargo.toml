@@ -1,0 +1,9 @@
+[package]
+name = "portfolio-tracker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.39"
+rust_decimal = "1.36.0"
+rust_decimal_macros = "1.36.0"
