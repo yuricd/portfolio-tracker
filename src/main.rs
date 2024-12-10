@@ -59,8 +59,9 @@ struct Portfolio {
 
 trait Asset {
     fn add(&mut self, stock_trade: StockTrade) -> &Self;
-    fn calculate_average_price(&self, stock: Stock) -> Decimal;
+    fn calculate_average_price(&self, stock: &Stock) -> Decimal;
     fn available(&self, stock: Stock) -> Decimal;
+    fn calculate_profit(&self, stock: Stock, amount: Decimal, unit_sell_price: Decimal) -> Decimal;
 }
 
 impl Asset for Vec<StockTrade> {
@@ -69,7 +70,7 @@ impl Asset for Vec<StockTrade> {
         self
     }
 
-    fn calculate_average_price(&self, stock: Stock) -> Decimal {
+    fn calculate_average_price(&self, stock: &Stock) -> Decimal {
         let buy_trades = self.iter().fold((dec!(0), dec!(0)), |acc, e| {
             match e.stock.ticker == stock.ticker && e.operation == Operation::BUY {
                 true => (acc.0 + e.amount * e.price, acc.1 + e.amount), // (price_sum, amount_sum)
@@ -98,8 +99,15 @@ impl Asset for Vec<StockTrade> {
                 false => acc,
             }
         });
-
         buy_trades_amount - sell_trades_amount
+    }
+
+    fn calculate_profit(&self, stock: Stock, amount: Decimal, unit_sell_price: Decimal) -> Decimal {
+        let average_unit_buy_price = self.calculate_average_price(&stock);
+        let buy_price = average_unit_buy_price * amount;
+        let sell_price = unit_sell_price * amount;
+        let profit = sell_price - buy_price;
+        profit
     }
 }
 
@@ -151,7 +159,7 @@ mod tests {
         portfolio.equities.add(stock_trade_2.clone());
 
         assert_eq!(
-            portfolio.equities.calculate_average_price(setup_stock()),
+            portfolio.equities.calculate_average_price(&setup_stock()),
             dec!(19.09)
         );
     }
@@ -189,5 +197,37 @@ mod tests {
         portfolio.equities.add(_3_buy_trade_2.clone());
 
         assert_eq!(portfolio.equities.available(setup_stock()), dec!(17));
+    }
+
+    #[test]
+    fn test_calculate_profit() {
+        let _1_buy_trade_1 = StockTrade {
+            amount: dec!(300),
+            price: dec!(10),
+            operation: Operation::BUY,
+            stock: setup_stock(),
+            date: Utc::now(),
+        };
+
+        let _2_sell_trade_1 = StockTrade {
+            amount: dec!(200),
+            price: dec!(12),
+            operation: Operation::BUY,
+            stock: setup_stock(),
+            date: Utc::now(),
+        };
+        // buy average price: 10.8
+
+        let mut portfolio = Portfolio { equities: vec![] };
+
+        portfolio.equities.add(_1_buy_trade_1.clone());
+        portfolio.equities.add(_2_sell_trade_1.clone());
+
+        assert_eq!(
+            portfolio
+                .equities
+                .calculate_profit(setup_stock(), dec!(300), dec!(15)),
+            dec!(1260)
+        );
     }
 }
